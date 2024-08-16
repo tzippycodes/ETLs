@@ -4,6 +4,7 @@ bin/
 __pycache__/
 *.py[cod]
 *$py.class
+user_token.txt
 
 # C extensions
 *.so
