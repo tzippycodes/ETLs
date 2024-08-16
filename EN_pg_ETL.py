@@ -86,7 +86,7 @@ def log_progress(message):
 functions in the correct order to complete the project. Note that this
 portion is not inside any function.'''
 base_url = "https://us.engagingnetworks.app/ens/service/"
-user_token = ""
+user_token = open("user_token.txt", "r").readline().strip()
 table_attribs = [headers]
 db_name = 'ccan.db'
 table_name = ''
