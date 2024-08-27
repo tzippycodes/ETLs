@@ -5,6 +5,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 user_token.txt
+#This is to ignore the project log and CSV download artifacts
+*.txt
+*.csv
 
 # C extensions
 *.so
