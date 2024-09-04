@@ -6,6 +6,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime 
 import time
+import os
+import sys as trans
+import psycopg2
+from sqlalchemy import create_engine
 
 def timestamp():
     timestamp_format = '%Y-%h-%d-%H:%M:%S' # Year-Monthname-Day-Hour-Minute-Second 
@@ -19,18 +23,28 @@ def log_progress(message):
     with open("./etl_project_log.txt","a") as f: 
         f.write(timestamp() + ' : ' + message + '\n')
 
+# Check for local CSV to speed ETL testing
+
+def check_for_csv(export_file_name):
+    if os.path.isfile(export_file_name):
+        return True
+    else:
+
+        return False
+
+
 # Connect to Engaging Networks Bulk API service with HTTPS GET Request to download user data and transactional data
 
 def authenticate(base_url, user_token):
     return requests.post(base_url + "authenticate", data=user_token).json()["ens-auth-token"]
 
-def begin_export(base_url, ens_auth_token):
+def begin_export(base_url, ens_auth_token, query_name):
 
     payload = {
         "displayUserDataInTransactionExport": True,
         "applyCustomReferenceNames": False,
         "fileType": "csv",
-        "queryName": "Data_Administration_Bulk_Export_All_Users",
+        "queryName": "query_name",
         "format": "User data",
         "fieldGroup": "apiexport"
     }
@@ -87,22 +101,12 @@ def load_to_csv(df, csv_path):
     in the provided path. Function returns nothing.'''
     df.to_csv(csv_path)
 
-def transform(df):
-
-
-def load_to_db(df, sql_connection, table_name):
-    ''' This function saves the final dataframe to as a database table
+def connect_and_load_to_db(df, table_name):
+    ''' This function transforms the final dataframe to as a SQL database table
     with the provided name. Function returns nothing.'''
-    df.to_sql(table_name, sql_connection, if_exists='replace', index=False)
-
-def run_query(query_statement, sql_connection):
-    ''' This function runs the stated query on the database table and
-    prints the output on the terminal. Function returns nothing. '''
-    print(query_statement)
-    query_output = pd.read_sql(query_statement, sql_connection)
-    print(query_output)
-
-
+    engine = create_engine('postgresql://user:password@localhost:5432/database')
+    df.to_sql(table_name, engine, if_exists="replace")
+    engine.dispose()
 
     
 ''' Here, you define the required entities and call the relevant 
@@ -111,42 +115,33 @@ portion is not inside any function.'''
 
 base_url = "https://us.engagingnetworks.app/ens/service/"
 user_token = open("user_token.txt", "r").readline().strip()
-#table_attribs = [headers]
+query_name = "Query_Name"
 db_name = 'ccan.db'
-table_name = ''
+table_name = "Engaging_Networks_Bulk_Backup" + timestamp()
 csv_path = "engaging_networks_backup_" + timestamp() + ".csv"
 
-log_progress('Preliminaries complete. Initiating ETL process')
+if len(trans.argv) > 1 and check_for_csv(trans.argv[1]):
+    print("CSV exists")
+    df = pd.read_csv(trans.argv[1])
+else:
+    print("Doesn't exist")
 
-ens_auth_token = authenticate(base_url, user_token)
-job_id = begin_export(base_url, ens_auth_token)
-print(job_id)
+    log_progress('Preliminaries complete. Initiating ETL process')
+    ens_auth_token = authenticate(base_url, user_token)
+    job_id = begin_export(base_url, ens_auth_token)
+    print(job_id)
 
-check_progress(base_url, ens_auth_token, job_id)
+    check_progress(base_url, ens_auth_token, job_id)
 
-waiting_for_export(base_url, ens_auth_token, job_id)
+    waiting_for_export(base_url, ens_auth_token, job_id)
+    log_progress('Data export complete. Initiating extraction process')
 
-log_progress('Data export complete. Initiating extraction process')
+    df = extract(base_url, ens_auth_token, job_id)
+    log_progress("File exported from Engaging Networks successfully.")
 
-df = extract(base_url, ens_auth_token, job_id)
-
-log_progress("File exported from Engaging Networks successfully.")
-
-print(df.head)
-
-'''
-df = extract_from_json(response)
-log_progress('Data extracted from JSON to Python DataFrame')
-df = transform(df)
-log_progress('Data transformation complete. Initiating loading process')
 load_to_csv(df, csv_path)
 log_progress('Data saved to backup CSV file')
-sql_connection = create_engine('postgresql://ccan_server:password@ccan:5432/ccan')
-log_progress('PostgreSQL Connection initiated.')
-load_to_db(df, sql_connection, table_name)
-log_progress('Data loaded to Database as table. Running the query')
-query_statement = f"SELECT * from {table_name} WHERE GDP_USD_billions >= 100"
-run_query(query_statement, sql_connection)
-log_progress('Process Complete.')
-sql_connection.close()
-'''
+
+log_progress('PostgreSQL Connection initiated. Transforming Data to SQL')
+connect_and_load_to_db(df, table_name)
+log_progress('Data loaded to Database as table. Process Complete.')
